@@ -10,7 +10,8 @@ class Base(DeclarativeBase):
 
 engine = create_engine(
     f"postgresql://{settings.postgres_user}:{settings.postgres_password}@"
-    f"{settings.postgres_server}:{settings.postgres_port}/{settings.postgres_db}"
+    f"{settings.postgres_server}:{settings.postgres_port}/"
+    f"{settings.postgres_db}"
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
