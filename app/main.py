@@ -10,13 +10,13 @@ from passlib.context import CryptContext
 
 dotenv.load_dotenv()
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session  # noqa: E402
 
-from app import models, schemas
-from app.db import SessionLocal, engine
-from app.models import User
-from app.schemas import Greeting
-from app.settings import settings
+from app import models, schemas  # noqa: E402
+from app.db import SessionLocal, engine  # noqa: E402
+from app.models import User  # noqa: E402
+from app.schemas import Greeting  # noqa: E402
+from app.settings import settings  # noqa: E402
 
 
 class LazyDbInit:
