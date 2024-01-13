@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+      - "5678:5678" # for DEBUG=debugpy
+      - "5555:5555" # for DEBUG=web-pdb
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env
+    environment:
+      - DEBUG # can be empty, debugpy, or pdb
+    depends_on:
+      - db
+    restart: always
+
+  db:
+    image: "postgres:15.2"
+    env_file:
+      - ./.env
+    restart: always
+    ports:
+      - "9432:5432"
+    volumes:
+    # Store the db data on the host machine, not inside the container.
+    # Put a better path than /tmp!
+      - /tmp/postgresql:/var/lib/postgresql
+      - /tmp/postgresql/data:/var/lib/postgresql/data
