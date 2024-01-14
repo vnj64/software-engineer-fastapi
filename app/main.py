@@ -1,4 +1,5 @@
 import datetime
+import time
 from typing import List, Type
 import dotenv
 import uvicorn
@@ -19,7 +20,7 @@ from app.models import User  # noqa: E402
 from app.schemas import Greeting  # noqa: E402
 from app.settings import settings  # noqa: E402
 
-from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 
 class LazyDbInit:
@@ -34,9 +35,34 @@ class LazyDbInit:
 
 server = FastAPI()
 
-# Define your metrics
-request_counter = Counter('requests_total', 'Total number of requests', ['path'])
-registration_timestamp_gauge = Gauge('registration_timestamp', 'Registration timestamp')
+request_counter_by_path = Counter('requests_total', 'Total number of requests', ['path'])
+error_counter_by_path = Counter('errors_total', 'Total number of errors', ['path'])
+execution_time_by_path = Histogram('execution_time_seconds', 'Execution time of each endpoint', ['path'])
+integration_execution_time = Histogram('integration_execution_time_seconds', 'Execution time of integration methods')
+
+
+@server.middleware("http")
+async def start_timer(request: Request, call_next):
+    request.state.start_time = time.time()
+    response = await call_next(request)
+    return response
+
+@server.middleware("http")
+async def add_metrics(request: Request, call_next):
+    path = request.url.path
+
+    request_counter_by_path.labels(path=path).inc()
+
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        error_counter_by_path.labels(path=path).inc()
+        raise e
+
+    execution_time = time.time() - request.state.start_time
+    execution_time_by_path.labels(path=path).observe(execution_time)
+
+    return response
 
 
 def get_db() -> Session:
@@ -173,13 +199,17 @@ async def register(username: str = Form(...), password: str = Form(...), redis: 
         db.close()
 
 
-@server.get("/", response_model=List[schemas.Greeting])
-async def root(db: Session = Depends(get_db), redis: Redis = Depends(get_redis_dependency)) -> List[Type[schemas.Greeting]]:
-    text = str(datetime.datetime.now())
-    greeting = Greeting(text=text)
-    db_greeting = models.Greeting(**greeting.dict())
-    db.add(db_greeting)
-    db.commit()
+@server.get("/")
+async def root(db: Session = Depends(get_db), redis: Redis = Depends(get_redis_dependency)) -> List[schemas.Greeting]:
+    path = "/"
+
+    with integration_execution_time.time():
+        text = str(datetime.datetime.now())
+        greeting = Greeting(text=text)
+        db_greeting = models.Greeting(**greeting.dict())
+        db.add(db_greeting)
+        db.commit()
+
     return db.query(models.Greeting).all()
 
 
@@ -187,13 +217,6 @@ async def root(db: Session = Depends(get_db), redis: Redis = Depends(get_redis_d
 async def hello() -> dict:
     return {"hello": "world"}
 
-
-@server.middleware("http")
-async def add_metrics(request: Request, call_next):
-    path = request.url.path
-    request_counter.labels(path=path).inc()
-    response = await call_next(request)
-    return response
 
 @server.get("/metrics")
 async def get_metrics():

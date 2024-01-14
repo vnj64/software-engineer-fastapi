@@ -18,6 +18,7 @@ services:
     depends_on:
       - db
       - redis
+      - prometheus  # Add Prometheus as a dependency
     restart: always
 
   db:
@@ -28,8 +29,6 @@ services:
     ports:
       - "9432:5432"
     volumes:
-    # Store the db data on the host machine, not inside the container.
-    # Put a better path than /tmp!
       - /tmp/postgresql:/var/lib/postgresql
       - /tmp/postgresql/data:/var/lib/postgresql/data
 
@@ -37,4 +36,14 @@ services:
     image: "redis:latest"
     ports:
       - "6379:6379"
+    restart: always
+
+  prometheus:
+    image: "prom/prometheus:v2.30.3"  # Use a specific version
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
     restart: always
