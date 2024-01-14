@@ -8,8 +8,8 @@ elif [ "$DEBUG" = "pdb" ]
 then
   echo "Running with PDB"
   pip install web-pdb
-  uvicorn app.main:server --host=0.0.0.0 --reload
+  python3 -m uvicorn app.main:server --host=0.0.0.0 --reload
 else
   echo "Running in production mode"
-  uvicorn app.main:server --host=0.0.0.0 --reload
+  python3 -m uvicorn app.main:server --host=0.0.0.0 --reload
 fi

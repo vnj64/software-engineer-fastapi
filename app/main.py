@@ -1,11 +1,9 @@
 import datetime
 from typing import List, Type
-
-import aioredis
 import dotenv
 import uvicorn
+from fastapi_redis import Redis
 from fastapi import Depends, FastAPI, Form, HTTPException, status
-from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -31,6 +29,13 @@ class LazyDbInit:
             cls.is_initialized = True
 
 
+async def get_redis(redis: Redis = Depends(get_redis)):
+    try:
+        yield redis
+    finally:
+        await redis.close()
+
+
 server = FastAPI()
 
 
@@ -41,6 +46,13 @@ def get_db() -> Session:
         yield db
     finally:
         db.close()
+
+
+async def get_redis_db(redis: Redis = Depends(get_redis)):
+    try:
+        yield redis
+    finally:
+        await redis.close()
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -95,8 +107,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
 
 @server.post("/token")
 async def login_for_access_token(
-    username: str = Form(...), password: str = Form(...)
+    username: str = Form(...),
+    password: str = Form(...),
+    redis: Redis = Depends(get_redis),
 ) -> dict:
+
     db = SessionLocal()
     user = db.query(User).filter(User.username == username).first()
     db.close()
@@ -114,12 +129,11 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = datetime.timedelta(
-        minutes=int(settings.access_token_expire_minutes)
-    )
-    access_token = create_access_token(
-        data={"sub": username}, expires_delta=access_token_expires
-    )
+    access_token_expires = datetime.timedelta(minutes=int(settings.access_token_expire_minutes))
+    access_token = create_access_token(data={"sub": username}, expires_delta=access_token_expires)
+
+    await redis.set(username, access_token)
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -143,7 +157,7 @@ async def register(username: str = Form(...), password: str = Form(...)):
 
 
 @server.get("/", response_model=List[schemas.Greeting])
-async def root(db: Session = Depends(get_db)) -> List[Type[schemas.Greeting]]:
+async def root(redis: Redis = Depends(get_redis_db)) -> List[Type[schemas.Greeting]]:
     text = str(datetime.datetime.now())
     greeting = Greeting(text=text)
     db_greeting = models.Greeting(**greeting.dict())
