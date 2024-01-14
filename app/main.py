@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import aioredis
 
 dotenv.load_dotenv()
 
@@ -29,13 +30,6 @@ class LazyDbInit:
             cls.is_initialized = True
 
 
-async def get_redis(redis: Redis = Depends(get_redis)):
-    try:
-        yield redis
-    finally:
-        await redis.close()
-
-
 server = FastAPI()
 
 
@@ -48,7 +42,15 @@ def get_db() -> Session:
         db.close()
 
 
-async def get_redis_db(redis: Redis = Depends(get_redis)):
+async def get_redis():
+    redis = await aioredis.from_url(settings.redis_url)
+    try:
+        yield redis
+    finally:
+        await redis.close()
+
+
+async def get_redis_dependency(redis: aioredis.Redis = Depends(get_redis)):
     try:
         yield redis
     finally:
@@ -157,7 +159,7 @@ async def register(username: str = Form(...), password: str = Form(...)):
 
 
 @server.get("/", response_model=List[schemas.Greeting])
-async def root(redis: Redis = Depends(get_redis_db)) -> List[Type[schemas.Greeting]]:
+async def root(db: Session = Depends(get_db), redis: Redis = Depends(get_redis_dependency)) -> List[Type[schemas.Greeting]]:
     text = str(datetime.datetime.now())
     greeting = Greeting(text=text)
     db_greeting = models.Greeting(**greeting.dict())
