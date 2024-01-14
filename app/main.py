@@ -3,7 +3,7 @@ from typing import List, Type
 import dotenv
 import uvicorn
 from fastapi_redis import Redis
-from fastapi import Depends, FastAPI, Form, HTTPException, status
+from fastapi import Depends, FastAPI, Form, HTTPException, status, Response, Request 
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -19,6 +19,8 @@ from app.models import User  # noqa: E402
 from app.schemas import Greeting  # noqa: E402
 from app.settings import settings  # noqa: E402
 
+from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+
 
 class LazyDbInit:
     is_initialized = False
@@ -31,6 +33,10 @@ class LazyDbInit:
 
 
 server = FastAPI()
+
+# Define your metrics
+request_counter = Counter('requests_total', 'Total number of requests', ['path'])
+registration_timestamp_gauge = Gauge('registration_timestamp', 'Registration timestamp')
 
 
 def get_db() -> Session:
@@ -56,6 +62,11 @@ async def get_redis_dependency(redis: aioredis.Redis = Depends(get_redis)):
     finally:
         await redis.close()
 
+
+async def get_metrics_dependency(request: Request):
+    path = request.url.path
+    request_counter.labels(path).inc()
+    yield
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -148,11 +159,15 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 @server.post("/register")
-async def register(username: str = Form(...), password: str = Form(...)):
+async def register(username: str = Form(...), password: str = Form(...), redis: aioredis.Redis = Depends(get_redis_dependency)):
     db = SessionLocal()
     try:
         hashed_password = hash_password(password)
         create_user(db, username, hashed_password)
+
+        registration_timestamp = datetime.datetime.utcnow().timestamp()
+        await redis.set(f"{username}_registration_timestamp", str(registration_timestamp))
+
         return {"username": username}
     finally:
         db.close()
@@ -172,6 +187,17 @@ async def root(db: Session = Depends(get_db), redis: Redis = Depends(get_redis_d
 async def hello() -> dict:
     return {"hello": "world"}
 
+
+@server.middleware("http")
+async def add_metrics(request: Request, call_next):
+    path = request.url.path
+    request_counter.labels(path=path).inc()
+    response = await call_next(request)
+    return response
+
+@server.get("/metrics")
+async def get_metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 if __name__ == "__main__":
     uvicorn.run(server, host="0.0.0.0", port=8001)
