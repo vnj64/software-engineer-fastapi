@@ -1,5 +1,5 @@
-from sqlalchemy import Column, Integer, String
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, String, insert, select
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
 
@@ -16,3 +16,20 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+
+    @classmethod
+    async def get_users(cls, session_maker: sessionmaker, username):
+        async with session_maker() as session:
+            sql = select(cls).where(cls.username == username)
+            result = await session.execute(sql)
+            user: cls = result.scalar()
+        return user
+
+    @classmethod
+    async def insert_user(
+        cls, session_maker: sessionmaker, username: str, hashed_password: str
+    ):
+        async with session_maker() as session:
+            sql = insert(cls).values(username=username, hashed_password=hashed_password)
+            await session.execute(sql)
+            await session.commit()
