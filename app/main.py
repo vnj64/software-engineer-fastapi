@@ -1,15 +1,20 @@
 import datetime
+import logging
 import time
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict
 
 import aioredis
 import dotenv
 import uvicorn
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
+from asyncpg import UniqueViolationError
+from fastapi import (Depends, FastAPI, Form, HTTPException, Request, Response,
+                     status)
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_redis import Redis  # type: ignore
-from jose import JWTError, jwt
+from jose import jwt
 from passlib.context import CryptContext
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import create_async_engine
 
 dotenv.load_dotenv()
 
@@ -17,12 +22,10 @@ import sentry_sdk  # noqa: E402
 from prometheus_client import Counter  # noqa: E402
 from prometheus_client import Histogram  # noqa: E402
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from sqlalchemy.orm import Session  # noqa: E402
 
 from app import models  # noqa: E402
-from app.db import SessionLocal, engine  # noqa: E402
+from app.db import create_db_session  # noqa: E402
 from app.models import User  # noqa: E402
-from app.schemas import Greeting  # noqa: E402
 from app.settings import settings  # noqa: E402
 
 sentry_sdk.init(
@@ -30,17 +33,6 @@ sentry_sdk.init(
     traces_sample_rate=1.0,
     profiles_sample_rate=1.0,
 )
-
-
-class LazyDbInit:
-    is_initialized = False
-
-    @classmethod
-    def initialize(cls):
-        if not cls.is_initialized:
-            models.Base.metadata.create_all(bind=engine)
-            cls.is_initialized = True
-
 
 server = FastAPI()
 
@@ -56,6 +48,29 @@ execution_time_by_path = Histogram(
 integration_execution_time = Histogram(
     "integration_execution_time_seconds", "Execution time of integration methods"
 )
+
+logging.basicConfig(
+    level=logging.INFO,
+    filename=f"app/log/{__name__}.log",
+    filemode="w+",
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+
+
+class LazyDbInit:
+    is_initialized = False
+
+    @classmethod
+    async def initialize(cls):
+        if not cls.is_initialized:
+            async with create_db_session() as session:
+                result = await session.execute(
+                    select(models.Base.metadata.tables.values())
+                )
+                tables = result.scalars().all()
+                if not tables:
+                    models.Base.metadata.create_all(bind=create_async_engine())
+                    cls.is_initialized = True
 
 
 @server.get("/sentry-debug")
@@ -87,15 +102,6 @@ async def add_metrics(request: Request, call_next):
     execution_time_by_path.labels(path=path).observe(execution_time)
 
     return response
-
-
-def get_db() -> Generator[Session, None, None]:
-    LazyDbInit.initialize()
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 async def get_redis():
@@ -133,52 +139,19 @@ def create_access_token(data: dict, expires_delta: datetime.timedelta) -> str:
     return encoded_jwt
 
 
-def create_user(db: Session, username: str, password: str):
-    existing_user = db.query(User).filter(User.username == username).first()
-    if existing_user:
-        raise ValueError("User with this username already exists")
-
-    db_user = User(username=username, hashed_password=password)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
-
-
-def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(
-            token, settings.secret_key, algorithms=[settings.algorithm]
-        )
-        username: Optional[str] = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    db = SessionLocal()
-    user = db.query(User).filter(User.username == username).first()
-    db.close()
-    if user is None:
-        raise credentials_exception
-    return user
-
-
 @server.post("/token")
 async def login_for_access_token(
     username: str = Form(...),
     password: str = Form(...),
     redis: Redis = Depends(get_redis),
 ) -> Dict[str, Any]:
-    db = SessionLocal()
-    user = db.query(User).filter(User.username == username).first()
-    db.close()
+    session = await create_db_session()
+
+    result = await User.get_users(session, username=username)
+    user = result
+
     if not user or not user.hashed_password:
+        logging.info(f"Пользователь {user} не авторизован")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -200,7 +173,7 @@ async def login_for_access_token(
     )
 
     await redis.set(username, access_token)
-
+    logging.info(f"Пользователь {username} успешно получил свой токен.")
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -218,36 +191,25 @@ async def register(
     password: str = Form(...),
     redis: aioredis.Redis = Depends(get_redis_dependency),
 ):
-    db = SessionLocal()
+    session = await create_db_session()
     try:
         hashed_password = hash_password(password)
-        create_user(db, username, hashed_password)
+        await User.insert_user(
+            session_maker=session, username=username, hashed_password=hashed_password
+        )
 
         registration_timestamp = datetime.datetime.utcnow().timestamp()
         await redis.set(
             f"{username}_registration_timestamp", str(registration_timestamp)
         )
-
+        logging.info(f"Пользователь с именем {username} успешно создан. 200.")
         return {"username": username}
-    finally:
-        db.close()
+    except UniqueViolationError as e:
+        logging.error(e)
+        raise HTTPException(status_code=404, detail="Такой пользователь существует.")
 
 
-@server.get("/", response_model=None)
-async def root(
-    db: Session = Depends(get_db), redis: Redis = Depends(get_redis_dependency)
-) -> List[models.Greeting]:
-    with integration_execution_time.time():
-        text = str(datetime.datetime.now())
-        greeting = Greeting(text=text)
-        db_greeting = models.Greeting(**greeting.dict())
-        db.add(db_greeting)
-        db.commit()
-
-    return db.query(models.Greeting).all()
-
-
-@server.get("/hello")
+@server.get("/")
 async def hello() -> dict:
     return {"hello": "world"}
 
