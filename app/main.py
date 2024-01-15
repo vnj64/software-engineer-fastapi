@@ -239,7 +239,7 @@ async def register(
         db.close()
 
 
-@server.get("/")
+@server.get("/", response_model=None)
 async def root(
     db: Session = Depends(get_db), redis: Redis = Depends(get_redis_dependency)
 ) -> List[models.Greeting]:
