@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     redis_url: str
 
+    sentry_url: str
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

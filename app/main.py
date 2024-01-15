@@ -22,6 +22,14 @@ from app.settings import settings  # noqa: E402
 
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn=settings.sentry_url,
+    traces_sample_rate=1.0,
+    profiles_sample_rate=1.0,
+)
+
 
 class LazyDbInit:
     is_initialized = False
@@ -39,6 +47,11 @@ request_counter_by_path = Counter('requests_total', 'Total number of requests', 
 error_counter_by_path = Counter('errors_total', 'Total number of errors', ['path'])
 execution_time_by_path = Histogram('execution_time_seconds', 'Execution time of each endpoint', ['path'])
 integration_execution_time = Histogram('integration_execution_time_seconds', 'Execution time of integration methods')
+
+
+@server.get("/sentry-debug")
+async def trigger_error():
+    division_by_zero = 1 / 0
 
 
 @server.middleware("http")
