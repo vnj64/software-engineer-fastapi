@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     sentry_url: str
 
+    mode: str
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

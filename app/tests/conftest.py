@@ -1,19 +1,19 @@
+import os
+
 import dotenv
-import pytest
-from fastapi.testclient import TestClient
 
 dotenv.load_dotenv()
 
-from app.tests.fixtures import get_test_db  # noqa: E402
-
-from ..main import server  # noqa: E402
-
-
-@pytest.fixture
-def client():
-    return TestClient(server)
+import pytest
+from app.tests.fixtures import create_db
 
 
-@pytest.fixture
-def db():
-    yield get_test_db()
+@pytest.fixture(scope="function")
+def db_session():
+    # Connect to your test database and create tables
+    create_db()
+
+    yield
+
+    # Tear down: Disconnect and drop the tables and delete the database file
+    os.remove("test.db")
