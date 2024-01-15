@@ -1,6 +1,6 @@
 import datetime
 import time
-from typing import List
+from typing import Any, Dict, Generator, List, Optional
 
 import aioredis
 import dotenv
@@ -8,18 +8,19 @@ import uvicorn
 from fastapi import (Depends, FastAPI, Form, HTTPException, Request, Response,
                      status)
 from fastapi.security import OAuth2PasswordBearer
-from fastapi_redis import Redis
+from fastapi_redis import Redis  # type: ignore
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 dotenv.load_dotenv()
 
 import sentry_sdk  # noqa: E402
-from prometheus_client import (CONTENT_TYPE_LATEST, Counter,  # noqa: E402
-                               Histogram, generate_latest)
+from prometheus_client import Counter  # noqa: E402
+from prometheus_client import (CONTENT_TYPE_LATEST, Histogram,  # noqa: E402
+                               generate_latest)
 from sqlalchemy.orm import Session  # noqa: E402
 
-from app import models, schemas  # noqa: E402
+from app import models  # noqa: E402
 from app.db import SessionLocal, engine  # noqa: E402
 from app.models import User  # noqa: E402
 from app.schemas import Greeting  # noqa: E402
@@ -52,8 +53,11 @@ error_counter_by_path = Counter("errors_total",
                                 ["path"])
 
 execution_time_by_path = Histogram(
-    "execution_time_seconds", "Execution time of each endpoint", ["path"]
+    "execution_time_seconds",
+    "Execution time of each endpoint",
+    ["path"]
 )
+
 integration_execution_time = Histogram(
     "integration_execution_time_seconds",
     "Execution time of integration methods"
@@ -91,7 +95,7 @@ async def add_metrics(request: Request, call_next):
     return response
 
 
-def get_db() -> Session:
+def get_db() -> Generator[Session, None, None]:
     LazyDbInit.initialize()
     db = SessionLocal()
     try:
@@ -157,7 +161,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         payload = jwt.decode(
             token, settings.secret_key, algorithms=[settings.algorithm]
         )
-        username: str = payload.get("sub")
+        username: Optional[str] = payload.get("sub")
         if username is None:
             raise credentials_exception
     except JWTError:
@@ -176,7 +180,7 @@ async def login_for_access_token(
     username: str = Form(...),
     password: str = Form(...),
     redis: Redis = Depends(get_redis),
-) -> dict:
+) -> Dict[str, Any]:
     db = SessionLocal()
     user = db.query(User).filter(User.username == username).first()
     db.close()
@@ -187,7 +191,7 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(password, str(user.hashed_password)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -238,8 +242,7 @@ async def register(
 @server.get("/")
 async def root(
     db: Session = Depends(get_db), redis: Redis = Depends(get_redis_dependency)
-) -> List[schemas.Greeting]:
-
+) -> List[models.Greeting]:
     with integration_execution_time.time():
         text = str(datetime.datetime.now())
         greeting = Greeting(text=text)
