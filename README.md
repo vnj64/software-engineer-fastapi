@@ -26,7 +26,7 @@
 
 
 ## ✅ Линтеры
-![все проходит)](/home/vnj/PycharmProjects/examProject/github-assets/photo_2024-01-15_21-11-50.jpg)
+![все проходит)](/github-assets/photo_2024-01-15_21-11-50.jpg)
 
 ## ⚔️ Путь самурая осилит сильнейший.
 **Камиль:**
