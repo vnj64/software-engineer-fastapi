@@ -32,3 +32,4 @@ archive.zip
 .env
 __pycache__/
 .gitignore
+.mypy_cache/
