@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/sasha/Desktop/ProgramIngener/software-engineer-fastapi/venv"
+VIRTUAL_ENV="/home/vnj/PycharmProjects/examProject/venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
