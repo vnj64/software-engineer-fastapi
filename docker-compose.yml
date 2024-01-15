@@ -7,18 +7,18 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-      - "5678:5678" # for DEBUG=debugpy
-      - "5555:5555" # for DEBUG=web-pdb
+      - "5678:5678"
+      - "5555:5555"
     volumes:
       - .:/app
     env_file:
       - ./.env
     environment:
-      - DEBUG # can be empty, debugpy, or pdb
+      - DEBUG
     depends_on:
       - db
       - redis
-      - prometheus  # Add Prometheus as a dependency
+      - prometheus
     restart: always
 
   db:
@@ -32,6 +32,15 @@ services:
       - /tmp/postgresql:/var/lib/postgresql
       - /tmp/postgresql/data:/var/lib/postgresql/data
 
+  test_db:
+    image: "postgres:15.2"
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432"
+
   redis:
     image: "redis:latest"
     ports:
@@ -39,7 +48,7 @@ services:
     restart: always
 
   prometheus:
-    image: "prom/prometheus:v2.30.3"  # Use a specific version
+    image: "prom/prometheus:v2.30.3"
     volumes:
       - ./prometheus:/etc/prometheus
     command:
