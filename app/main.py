@@ -5,8 +5,7 @@ from typing import Any, Dict, Generator, List, Optional
 import aioredis
 import dotenv
 import uvicorn
-from fastapi import (Depends, FastAPI, Form, HTTPException, Request, Response,
-                     status)
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_redis import Redis  # type: ignore
 from jose import JWTError, jwt
@@ -16,8 +15,8 @@ dotenv.load_dotenv()
 
 import sentry_sdk  # noqa: E402
 from prometheus_client import Counter  # noqa: E402
-from prometheus_client import (CONTENT_TYPE_LATEST, Histogram,  # noqa: E402
-                               generate_latest)
+from prometheus_client import Histogram  # noqa: E402
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app import models  # noqa: E402
@@ -48,19 +47,14 @@ server = FastAPI()
 request_counter_by_path = Counter(
     "requests_total", "Total number of requests", ["path"]
 )
-error_counter_by_path = Counter("errors_total",
-                                "Total number of errors",
-                                ["path"])
+error_counter_by_path = Counter("errors_total", "Total number of errors", ["path"])
 
 execution_time_by_path = Histogram(
-    "execution_time_seconds",
-    "Execution time of each endpoint",
-    ["path"]
+    "execution_time_seconds", "Execution time of each endpoint", ["path"]
 )
 
 integration_execution_time = Histogram(
-    "integration_execution_time_seconds",
-    "Execution time of integration methods"
+    "integration_execution_time_seconds", "Execution time of integration methods"
 )
 
 
