@@ -11,7 +11,7 @@ from fastapi import (Depends, FastAPI, Form, HTTPException, Request, Response,
                      status)
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_redis import Redis  # type: ignore
-from jose import jwt
+from jose import jwt, JWTError
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -218,6 +218,30 @@ async def hello() -> dict:
 async def get_metrics():
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+
+from fastapi.security import OAuth2PasswordBearer
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    return username
+
+
+@server.get("/protected-route")
+async def protected_route(current_user: str = Depends(get_current_user)):
+    return {"message": f"Hello, {current_user}! This route is protected by JWT."}
+    
 
 if __name__ == "__main__":
     uvicorn.run(server, host="0.0.0.0", port=8001)
