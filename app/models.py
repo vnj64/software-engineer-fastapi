@@ -1,5 +1,7 @@
+from typing import Type
+
 from sqlalchemy import Column, Integer, String, insert, select
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker  # type: ignore
 
 Base = declarative_base()
 
@@ -18,7 +20,7 @@ class User(Base):
     hashed_password = Column(String)
 
     @classmethod
-    async def get_users(cls, session_maker: sessionmaker, username):
+    async def get_users(cls: Type['User'], session_maker: sessionmaker, username):
         async with session_maker() as session:
             sql = select(cls).where(cls.username == username)
             result = await session.execute(sql)
@@ -27,7 +29,7 @@ class User(Base):
 
     @classmethod
     async def insert_user(
-        cls, session_maker: sessionmaker, username: str, hashed_password: str
+        cls: Type['User'], session_maker: sessionmaker, username: str, hashed_password: str
     ):
         async with session_maker() as session:
             sql = insert(cls).values(username=username,
