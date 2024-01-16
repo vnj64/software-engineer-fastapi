@@ -7,8 +7,11 @@ from app.settings import settings
 
 async def create_db_session():
     engine = create_async_engine(
-        url=f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}@"
-        f"{settings.postgres_server}:{settings.postgres_port}/{settings.postgres_db}",
+        url=f"postgresql+asyncpg://{settings.postgres_user}:"
+        f"{settings.postgres_password}@"
+        f"{settings.postgres_server}:"
+        f"{settings.postgres_port}/"
+        f"{settings.postgres_db}",
     )
 
     async with engine.begin() as conn:

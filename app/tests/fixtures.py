@@ -5,11 +5,16 @@ from app.settings import settings
 
 Base = declarative_base()
 if settings.mode == "testing":
-    SQLALCHEMY_DATABASE_URL = "postgresql://user:password@localhost:5433/testdb"
+    SQLALCHEMY_DATABASE_URL = "postgresql://" \
+                              "user:password@" \
+                              "localhost:5433/testdb"
 else:
     SQLALCHEMY_DATABASE_URL = (
-        f"postgresql://{settings.postgres_user}:{settings.postgres_password}@"
-        f"{settings.postgres_server}:{settings.postgres_port}/{settings.postgres_db}"
+        f"postgresql://{settings.postgres_user}:"
+        f"{settings.postgres_password}@"
+        f"{settings.postgres_server}:"
+        f"{settings.postgres_port}/"
+        f"{settings.postgres_db}"
     )
 
 

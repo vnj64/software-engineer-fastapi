@@ -30,6 +30,7 @@ class User(Base):
         cls, session_maker: sessionmaker, username: str, hashed_password: str
     ):
         async with session_maker() as session:
-            sql = insert(cls).values(username=username, hashed_password=hashed_password)
+            sql = insert(cls).values(username=username,
+                                     hashed_password=hashed_password)
             await session.execute(sql)
             await session.commit()

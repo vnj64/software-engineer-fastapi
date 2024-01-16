@@ -11,7 +11,7 @@ from fastapi import (Depends, FastAPI, Form, HTTPException, Request, Response,
                      status)
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_redis import Redis  # type: ignore
-from jose import jwt, JWTError
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -21,7 +21,8 @@ dotenv.load_dotenv()
 import sentry_sdk  # noqa: E402
 from prometheus_client import Counter  # noqa: E402
 from prometheus_client import Histogram  # noqa: E402
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import (CONTENT_TYPE_LATEST,  # noqa: E402
+                               generate_latest)
 
 from app import models  # noqa: E402
 from app.db import create_db_session  # noqa: E402
@@ -39,14 +40,19 @@ server = FastAPI()
 request_counter_by_path = Counter(
     "requests_total", "Total number of requests", ["path"]
 )
-error_counter_by_path = Counter("errors_total", "Total number of errors", ["path"])
+error_counter_by_path = Counter("errors_total",
+                                "Total number of errors",
+                                ["path"])
 
 execution_time_by_path = Histogram(
-    "execution_time_seconds", "Execution time of each endpoint", ["path"]
+    "execution_time_seconds",
+    "Execution time of each endpoint",
+    ["path"]
 )
 
 integration_execution_time = Histogram(
-    "integration_execution_time_seconds", "Execution time of integration methods"
+    "integration_execution_time_seconds",
+    "Execution time of integration methods"
 )
 
 logging.basicConfig(
@@ -195,7 +201,9 @@ async def register(
     try:
         hashed_password = hash_password(password)
         await User.insert_user(
-            session_maker=session, username=username, hashed_password=hashed_password
+            session_maker=session,
+            username=username,
+            hashed_password=hashed_password
         )
 
         registration_timestamp = datetime.datetime.utcnow().timestamp()
@@ -206,7 +214,8 @@ async def register(
         return {"username": username}
     except UniqueViolationError as e:
         logging.error(e)
-        raise HTTPException(status_code=404, detail="Такой пользователь существует.")
+        raise HTTPException(status_code=404,
+                            detail="Такой пользователь существует.")
 
 
 @server.get("/")
@@ -219,8 +228,6 @@ async def get_metrics():
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-from fastapi.security import OAuth2PasswordBearer
-
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -228,7 +235,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(
+            token, settings.secret_key, algorithms=[settings.algorithm]
+        )
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
@@ -240,8 +249,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
 @server.get("/protected-route")
 async def protected_route(current_user: str = Depends(get_current_user)):
-    return {"message": f"Hello, {current_user}! This route is protected by JWT."}
-    
+    return {"message": f"Hello, {current_user}! "
+                       f"This route is protected by JWT."}
+
 
 if __name__ == "__main__":
     uvicorn.run(server, host="0.0.0.0", port=8001)
